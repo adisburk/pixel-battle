@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pixel Battle</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #fff;
+            font-family: monospace;
+        }
+        
+        .canvas-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: calc(100vh - 80px);
+            padding: 20px;
+        }
+        
+        canvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+        }
+        
+        .palette {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
+            border-top: 1px solid #ccc;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            z-index: 100;
+        }
+        
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ddd;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        
+        .color-btn:hover {
+            transform: scale(1.05);
+            border-color: #999;
+        }
+        
+        .color-btn.active {
+            border: 3px solid black;
+            transform: scale(1.05);
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 24px 32px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            text-align: center;
+            min-width: 250px;
+        }
+        
+        .modal-content p {
+            margin: 0 0 20px 0;
+            font-size: 16px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .modal-buttons button {
+            padding: 8px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        
+        .modal-buttons button:first-child {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .modal-buttons button:first-child:hover {
+            background: #45a049;
+        }
+        
+        .modal-buttons button:last-child {
+            background: #f44336;
+            color: white;
+        }
+        
+        .modal-buttons button:last-child:hover {
+            background: #da190b;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 150;
+            animation: fadeOut 2s ease-in-out forwards;
+            pointer-events: none;
+        }
+        
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+    </style>
+</head>
+<body>
+    <div class="canvas-wrapper">
+        <canvas id="canvas"></canvas>
+    </div>
+    <div class="palette" id="palette"></div>
+
+<script>
+    const SIZE = 80;
+    const PIXEL_SIZE = 10;
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = SIZE * PIXEL_SIZE;
+    canvas.height = SIZE * PIXEL_SIZE;
+    
+    const colors = [
+        '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
+        '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', '#800000',
+        '#808080', '#C0C0C0', '#FFC0CB', '#A52A2A'
+    ];
+    
+    let selectedColor = '#FF0000';
+    let ws = null;
+    let pendingPixel = null;
+    
+    const paletteDiv = document.getElementById('palette');
+    colors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.style.backgroundColor = color;
+        btn.onclick = () => {
+            selectedColor = color;
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        };
+        if (color === '#FF0000') btn.classList.add('active');
+        paletteDiv.appendChild(btn);
+    });
+    
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.remove();
+        }, 2000);
+    }
+    
+    function showConfirm(x, y, color, callback) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        
+        modal.innerHTML = `
+            <div class="modal-content">
+                <p>Поставить цвет на (${x}, ${y})?</p>
+                <div class="modal-buttons">
+                    <button id="confirmYes">Да</button>
+                    <button id="confirmNo">Нет</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        document.getElementById('confirmYes').onclick = () => {
+            modal.remove();
+            callback(true);
+        };
+        
+        document.getElementById('confirmNo').onclick = () => {
+            modal.remove();
+            callback(false);
+        };
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.remove();
+                callback(false);
+            }
+        };
+    }
+    
+    function drawPixel(x, y, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE - 0.5, PIXEL_SIZE - 0.5);
+    }
+    
+    function drawFullCanvas(data) {
+        for (let i = 0; i < data.length; i++) {
+            const x = i % SIZE;
+            const y = Math.floor(i / SIZE);
+            ctx.fillStyle = data[i];
+            ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE - 0.5, PIXEL_SIZE - 0.5);
+        }
+        drawGrid();
+    }
+    
+    function drawGrid() {
+        ctx.beginPath();
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= SIZE; i++) {
+            ctx.moveTo(i * PIXEL_SIZE, 0);
+            ctx.lineTo(i * PIXEL_SIZE, canvas.height);
+            ctx.moveTo(0, i * PIXEL_SIZE);
+            ctx.lineTo(canvas.width, i * PIXEL_SIZE);
+            ctx.stroke();
+        }
+    }
+    
+    const originalFillRect = ctx.fillRect;
+    ctx.fillRect = function(x, y, w, h) {
+        originalFillRect.call(ctx, x, y, w, h);
+        drawGrid();
+    };
+    
+    canvas.addEventListener('click', (e) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            showToast('Нет подключения к серверу');
+            return;
+        }
+        
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+        
+        const x = Math.floor(mouseX / PIXEL_SIZE);
+        const y = Math.floor(mouseY / PIXEL_SIZE);
+        
+        if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            showConfirm(x, y, selectedColor, (confirmed) => {
+                if (confirmed) {
+                    ws.send(JSON.stringify({ x, y, color: selectedColor }));
+                }
+            });
+        }
+    });
+    
+    function connect() {
+        ws = new WebSocket('wss://pixel-battle.onrender.com');
+        
+        ws.onopen = () => {
+            showToast('Подключено к серверу');
+        };
+        
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === 'init') {
+                drawFullCanvas(msg.data);
+            } else if (msg.type === 'update') {
+                drawPixel(msg.x, msg.y, msg.color);
+            } else if (msg.type === 'error') {
+                showToast(msg.message);
+            }
+        };
+        
+        ws.onclose = () => {
+            showToast('Отключено от сервера, переподключение...');
+            setTimeout(connect, 2000);
+        };
+        
+        ws.onerror = () => {
+            showToast('Ошибка соединения');
+        };
+    }
+    
+    connect();
+    drawGrid();
+</script>
+</body>
+</html>
