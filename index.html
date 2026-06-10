@@ -283,7 +283,7 @@
     });
     
     function connect() {
-        ws = new WebSocket('wss://pixel-battle.onrender.com');
+        ws = new WebSocket('wss://pixel-battle.railway.internal');
         
         ws.onopen = () => {
             showToast('Подключено к серверу');
