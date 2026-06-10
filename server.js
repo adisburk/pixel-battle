@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 
 const SIZE = 80;
 const COOLDOWN = 3000;
-const PORT = process.env.PORT || 8080;  // Render задаст PORT автоматически
+const PORT = process.env.PORT || 80;
 
 let canvas = new Array(SIZE * SIZE).fill('#FFFFFF');
 const lastClick = new Map();
