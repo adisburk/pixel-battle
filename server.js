@@ -1,13 +1,21 @@
+const express = require('express');
+const { createServer } = require('http');
 const WebSocket = require('ws');
 
 const SIZE = 80;
 const COOLDOWN = 3000;
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 10000;
+
+const app = express();
+const server = createServer(app);
+const wss = new WebSocket.Server({ server });
 
 let canvas = new Array(SIZE * SIZE).fill('#FFFFFF');
 const lastClick = new Map();
 
-const wss = new WebSocket.Server({ port: PORT });
+app.get('/', (req, res) => {
+  res.send('Pixel Battle Server is running');
+});
 
 wss.on('connection', (ws) => {
   console.log('Новый игрок подключился');
@@ -43,4 +51,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log(`Сервер запущен на порту ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+});
